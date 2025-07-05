@@ -1,22 +1,30 @@
+// src/App.tsx
 
-import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/components/AuthProvider";
 import { LoginForm } from "@/components/LoginForm";
 import { Layout } from "@/components/Layout";
 import { SupabaseMemberDashboard } from "@/components/SupabaseMemberDashboard";
 import { AdminPanel } from "@/components/AdminPanel";
-import { useState } from "react";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+function ProtectedRoute({ children }: { children: JSX.Element }) {
+  const { isAuthenticated } = useAuth();
+  return isAuthenticated ? children : <Navigate to="/login" replace />;
+}
+
+function AdminRoute({ children }: { children: JSX.Element }) {
+    const { isAdmin } = useAuth();
+    return isAdmin ? children : <Navigate to="/" replace />;
+}
+
 function AppContent() {
-  const { isAuthenticated, loading, isAdmin } = useAuth();
-  const [currentView, setCurrentView] = useState<"member" | "admin">("member");
+  const { loading, isAuthenticated } = useAuth();
 
   if (loading) {
     return (
@@ -29,37 +37,34 @@ function AppContent() {
     );
   }
 
-  if (!isAuthenticated) {
-    return <LoginForm />;
-  }
-
-  const handleViewChange = (view: "member" | "admin") => {
-    if (view === "admin" && !isAdmin) {
-      return; // Não permite acesso ao admin se não for admin
-    }
-    setCurrentView(view);
-  };
-
   return (
     <BrowserRouter>
-      <Layout 
-        currentView={currentView} 
-        onViewChange={isAdmin ? handleViewChange : undefined}
-      >
-        <Routes>
-          <Route 
-            path="/" 
-            element={
-              currentView === "admin" && isAdmin ? (
-                <AdminPanel />
-              ) : (
+      <Routes>
+        <Route path="/login" element={!isAuthenticated ? <LoginForm /> : <Navigate to="/" />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Layout>
                 <SupabaseMemberDashboard />
-              )
-            } 
-          />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Layout>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+                <AdminRoute>
+                    <Layout>
+                        <AdminPanel />
+                    </Layout>
+                </AdminRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
     </BrowserRouter>
   );
 }
@@ -69,8 +74,7 @@ const App = () => (
     <TooltipProvider>
       <AuthProvider>
         <div className="matrix-bg">
-          <Toaster />
-          <Sonner />
+          <Sonner position="top-right" richColors />
           <AppContent />
         </div>
       </AuthProvider>
