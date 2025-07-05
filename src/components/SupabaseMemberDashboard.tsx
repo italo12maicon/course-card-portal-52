@@ -19,8 +19,7 @@ type SupabaseBanner = Tables<'banners'>;
 type SupabaseTopic = Tables<'topics'>;
 type SupabaseLesson = Tables<'lessons'>;
 
-interface ExtendedCourse extends Omit<SupabaseCourse, 'user_progress'> {
-  user_progress: number;
+interface ExtendedCourse extends SupabaseCourse {
   topics?: LocalTopic[];
 }
 
@@ -47,7 +46,7 @@ export function SupabaseMemberDashboard() {
         description: banner.description,
         image: banner.image,
         link: banner.link,
-        buttonText: banner.button_text,
+        buttonText: banner.button_text || "Ver mais",
         isActive: banner.is_active || false,
         createdAt: banner.created_at || new Date().toISOString()
       }));
@@ -81,10 +80,10 @@ export function SupabaseMemberDashboard() {
       if (!session || !courses) return null;
 
       const availableCourses = courses.filter(c => c.is_free || c.has_access);
-      const completedCourses = availableCourses.filter(c => c.user_progress === 100);
-      const inProgressCourses = availableCourses.filter(c => c.user_progress > 0 && c.user_progress < 100);
+      const completedCourses = availableCourses.filter(c => (c.user_progress || 0) === 100);
+      const inProgressCourses = availableCourses.filter(c => (c.user_progress || 0) > 0 && (c.user_progress || 0) < 100);
       const avgProgress = availableCourses.length > 0 
-        ? Math.round(availableCourses.reduce((acc, course) => acc + course.user_progress, 0) / availableCourses.length)
+        ? Math.round(availableCourses.reduce((acc, course) => acc + (course.user_progress || 0), 0) / availableCourses.length)
         : 0;
 
       return {
@@ -337,13 +336,13 @@ export function SupabaseMemberDashboard() {
                   <p className="text-xs text-muted-foreground line-clamp-3 mb-3 flex-1">
                     {course.description}
                   </p>
-                  {course.user_progress > 0 && (
+                  {(course.user_progress || 0) > 0 && (
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Progresso</span>
                         <span className="text-foreground font-medium">{course.user_progress}%</span>
                       </div>
-                      <Progress value={course.user_progress} className="h-1.5" />
+                      <Progress value={course.user_progress || 0} className="h-1.5" />
                     </div>
                   )}
                 </div>

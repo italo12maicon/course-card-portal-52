@@ -75,10 +75,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const userIP = await getUserIP();
       const userAgent = navigator.userAgent;
       
-      await supabase.rpc('register_login', {
+      const { error } = await supabase.rpc('register_login', {
         user_ip: userIP,
         user_agent_string: userAgent
       });
+
+      if (error) {
+        console.error('Error registering login:', error);
+      }
     } catch (error) {
       console.error('Error registering login:', error);
     }
