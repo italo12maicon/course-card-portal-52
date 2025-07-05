@@ -53,7 +53,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const userAgent = navigator.userAgent;
       
       await supabase.rpc('register_login', {
-        user_ip: userIP,
+        user_ip: userIP as any,
         user_agent_string: userAgent
       });
     } catch (error) {

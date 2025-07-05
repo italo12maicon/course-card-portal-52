@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,56 +10,23 @@ import { Play, Clock, BookOpen, Lock, Star, TrendingUp, Trophy, Target, Zap } fr
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./AuthProvider";
 import { toast } from "@/hooks/use-toast";
+import { Tables } from "@/integrations/supabase/types";
+import { Course as LocalCourse, Topic as LocalTopic, Lesson as LocalLesson, Banner as LocalBanner } from "@/types";
 
-interface Course {
-  id: number;
-  title: string;
-  description: string;
-  video_url: string | null;
-  thumbnail: string;
-  duration: string;
+// Type mappings from Supabase to local types
+type SupabaseCourse = Tables<'user_courses_with_progress'>;
+type SupabaseBanner = Tables<'banners'>;
+type SupabaseTopic = Tables<'topics'>;
+type SupabaseLesson = Tables<'lessons'>;
+
+interface ExtendedCourse extends Omit<SupabaseCourse, 'progress'> {
   progress: number;
-  category: string;
-  is_locked: boolean;
-  is_free: boolean;
-  has_access: boolean;
-  rating: number;
-  students: number;
-  topics?: Topic[];
-}
-
-interface Topic {
-  id: number;
-  title: string;
-  description: string;
-  thumbnail: string;
-  progress: number;
-  lessons: Lesson[];
-}
-
-interface Lesson {
-  id: number;
-  title: string;
-  description: string;
-  video_url: string;
-  duration: string;
-  is_completed: boolean;
-}
-
-interface Banner {
-  id: number;
-  title: string;
-  description: string;
-  image: string;
-  link: string;
-  button_text: string;
-  is_active: boolean;
-  created_at: string;
+  topics?: LocalTopic[];
 }
 
 export function SupabaseMemberDashboard() {
   const { user, session } = useAuth();
-  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [selectedCourse, setSelectedCourse] = useState<ExtendedCourse | null>(null);
 
   // Buscar banners
   const { data: banners, isLoading: bannersLoading } = useQuery({
@@ -72,7 +39,18 @@ export function SupabaseMemberDashboard() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as Banner[];
+      
+      // Convert to local Banner type
+      return (data as SupabaseBanner[]).map((banner): LocalBanner => ({
+        id: banner.id,
+        title: banner.title,
+        description: banner.description,
+        image: banner.image,
+        link: banner.link,
+        buttonText: banner.button_text,
+        isActive: banner.is_active,
+        createdAt: banner.created_at
+      }));
     }
   });
 
@@ -87,7 +65,11 @@ export function SupabaseMemberDashboard() {
         .select('*');
 
       if (error) throw error;
-      return data as Course[];
+      
+      return (data as SupabaseCourse[]).map((course): ExtendedCourse => ({
+        ...course,
+        progress: course.user_progress || 0
+      }));
     },
     enabled: !!session
   });
@@ -115,7 +97,7 @@ export function SupabaseMemberDashboard() {
     enabled: !!session && !!courses
   });
 
-  const handleCourseSelect = async (course: Course) => {
+  const handleCourseSelect = async (course: ExtendedCourse) => {
     if (!course.is_free && !course.has_access) {
       toast({
         title: "Acesso Restrito",
@@ -138,11 +120,22 @@ export function SupabaseMemberDashboard() {
 
       if (error) throw error;
 
-      const courseWithTopics = {
+      const courseWithTopics: ExtendedCourse = {
         ...course,
-        topics: topics?.map(topic => ({
-          ...topic,
-          lessons: topic.lessons || []
+        topics: (topics as any[])?.map((topic: any): LocalTopic => ({
+          id: topic.id,
+          title: topic.title,
+          description: topic.description,
+          thumbnail: topic.thumbnail,
+          progress: topic.progress || 0,
+          lessons: (topic.lessons || []).map((lesson: SupabaseLesson): LocalLesson => ({
+            id: lesson.id,
+            title: lesson.title,
+            description: lesson.description,
+            videoUrl: lesson.video_url,
+            duration: lesson.duration,
+            isCompleted: lesson.is_completed
+          }))
         })) || []
       };
 
@@ -180,9 +173,27 @@ export function SupabaseMemberDashboard() {
   }
 
   if (selectedCourse) {
+    // Convert ExtendedCourse to LocalCourse for CourseTopics
+    const localCourse: LocalCourse = {
+      id: selectedCourse.id,
+      title: selectedCourse.title,
+      description: selectedCourse.description,
+      videoUrl: selectedCourse.video_url,
+      thumbnail: selectedCourse.thumbnail,
+      duration: selectedCourse.duration,
+      progress: selectedCourse.progress,
+      category: selectedCourse.category,
+      isLocked: selectedCourse.is_locked,
+      isFree: selectedCourse.is_free,
+      hasAccess: selectedCourse.has_access,
+      rating: selectedCourse.rating,
+      students: selectedCourse.students,
+      topics: selectedCourse.topics || []
+    };
+
     return (
       <CourseTopics
-        course={selectedCourse}
+        course={localCourse}
         onBack={() => setSelectedCourse(null)}
       />
     );

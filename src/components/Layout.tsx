@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "./Sidebar";
@@ -5,11 +6,11 @@ import { Play, Settings, Bell, User, Menu } from "lucide-react";
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentView: "member" | "admin";
-  onViewChange: (view: "member" | "admin") => void;
+  currentView?: "member" | "admin";
+  onViewChange?: (view: "member" | "admin") => void;
 }
 
-export function Layout({ children, currentView, onViewChange }: LayoutProps) {
+export function Layout({ children, currentView = "member", onViewChange }: LayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [notifications] = useState([
     { 
@@ -49,23 +50,25 @@ export function Layout({ children, currentView, onViewChange }: LayoutProps) {
                   <Play className="h-6 w-6" />
                   StreamLearn
                 </h1>
-                <nav className="hidden md:flex space-x-4">
-                  <Button 
-                    variant={currentView === "member" ? "default" : "ghost"}
-                    onClick={() => onViewChange("member")}
-                    className="transition-all duration-300"
-                  >
-                    Meus Cursos
-                  </Button>
-                  <Button 
-                    variant={currentView === "admin" ? "default" : "ghost"}
-                    onClick={() => onViewChange("admin")}
-                    className="transition-all duration-300"
-                  >
-                    <Settings className="h-4 w-4 mr-2" />
-                    Painel Admin
-                  </Button>
-                </nav>
+                {onViewChange && (
+                  <nav className="hidden md:flex space-x-4">
+                    <Button 
+                      variant={currentView === "member" ? "default" : "ghost"}
+                      onClick={() => onViewChange("member")}
+                      className="transition-all duration-300"
+                    >
+                      Meus Cursos
+                    </Button>
+                    <Button 
+                      variant={currentView === "admin" ? "default" : "ghost"}
+                      onClick={() => onViewChange("admin")}
+                      className="transition-all duration-300"
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Painel Admin
+                    </Button>
+                  </nav>
+                )}
               </div>
               <div className="flex items-center space-x-4">
                 <Button variant="ghost" size="icon" className="text-foreground">
