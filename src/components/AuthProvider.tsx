@@ -1,14 +1,15 @@
+// src/components/AuthProvider.tsx
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner"; // Usando o sonner para notificações mais ricas
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<boolean>;
   isAuthenticated: boolean;
   loading: boolean;
@@ -35,10 +36,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Deriva o estado de autenticação diretamente da existência de uma sessão
   const isAuthenticated = !!session;
 
-  // Função para verificar se o usuário é admin
-  const checkAdminStatus = async (userId: string) => {
+  /**
+   * Verifica no banco de dados se o usuário logado tem a flag 'is_admin'.
+   * @param userId - O ID do usuário a ser verificado.
+   */
+  const checkAdminStatus = async (userId: string): Promise<boolean> => {
     try {
       const { data, error } = await supabase
         .from('users')
@@ -47,187 +52,149 @@ export function AuthProvider({ children }: AuthProviderProps) {
         .single();
 
       if (error) {
-        console.error('Error checking admin status:', error);
+        // Não mostra erro no console se for apenas porque o usuário ainda não existe na tabela 'users'
+        if (error.code !== 'PGRST116') {
+            console.error('Error checking admin status:', error.message);
+        }
         return false;
       }
-
       return data?.is_admin || false;
     } catch (error) {
-      console.error('Error checking admin status:', error);
+      console.error('Exception in checkAdminStatus:', error);
       return false;
     }
   };
 
-  // Função para obter IP do usuário
-  const getUserIP = async (): Promise<string> => {
+  /**
+   * Função para registrar o login de um usuário no banco, chamando uma RPC.
+   */
+  const registerUserLogin = async () => {
     try {
-      const response = await fetch('https://api.ipify.org?format=json');
-      const data = await response.json();
-      return data.ip;
-    } catch (error) {
-      return "127.0.0.1";
-    }
-  };
-
-  // Registrar login no banco
-  const registerLogin = async () => {
-    try {
-      const userIP = await getUserIP();
-      const userAgent = navigator.userAgent;
-      
+      // A RPC `register_login` já usa auth.uid() internamente no SQL,
+      // então não precisamos passar o ID do usuário.
+      // Ela também pode obter o IP do lado do servidor se configurada para isso.
       const { error } = await supabase.rpc('register_login', {
-        user_ip: userIP,
-        user_agent_string: userAgent
+        // Os argumentos user_ip e user_agent_string são opcionais na definição da função SQL
       });
 
       if (error) {
-        console.error('Error registering login:', error);
+        console.error('Error registering login via RPC:', error.message);
       }
     } catch (error) {
-      console.error('Error registering login:', error);
+      console.error('Exception in registerUserLogin:', error);
     }
   };
 
+  /**
+   * Efetua o login do usuário.
+   */
   const login = async (email: string, password: string): Promise<boolean> => {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-      if (error) {
-        toast({
-          title: "Erro no login",
-          description: error.message,
-          variant: "destructive",
-        });
-        return false;
-      }
-
-      if (data.user && data.session) {
-        setUser(data.user);
-        setSession(data.session);
-        
-        // Verificar se é admin
-        const adminStatus = await checkAdminStatus(data.user.id);
-        setIsAdmin(adminStatus);
-        
-        await registerLogin();
-        
-        toast({
-          title: "Login realizado com sucesso!",
-          description: "Bem-vindo de volta!",
-        });
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      console.error('Login error:', error);
-      toast({
-        title: "Erro no login",
-        description: "Ocorreu um erro inesperado",
-        variant: "destructive",
-      });
+    if (error) {
+      toast.error("Erro no login", { description: "Credenciais inválidas. Verifique seu e-mail e senha." });
       return false;
     }
+
+    if (data.session) {
+      // A lógica de atualização de estado (user, session, isAdmin)
+      // será tratada pelo onAuthStateChange para evitar duplicação.
+      toast.success("Login realizado com sucesso!", { description: "Bem-vindo de volta!" });
+      return true;
+    }
+    
+    return false;
   };
 
+  /**
+   * Registra um novo usuário no sistema.
+   */
   const register = async (name: string, email: string, password: string): Promise<boolean> => {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name: name,
-          },
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        // Adiciona metadados que serão usados pelo trigger para criar o perfil do usuário
+        data: {
+          name: name,
         },
-      });
+      },
+    });
 
-      if (error) {
-        toast({
-          title: "Erro no cadastro",
-          description: error.message,
-          variant: "destructive",
-        });
-        return false;
-      }
+    if (error) {
+      toast.error("Erro no cadastro", { description: error.message });
+      return false;
+    }
 
-      if (data.user) {
-        toast({
-          title: "Cadastro realizado com sucesso!",
-          description: "Verifique seu email para ativar a conta",
+    if (data.user) {
+        toast.success("Cadastro realizado com sucesso!", {
+            description: "Enviamos um link de confirmação para o seu e-mail.",
         });
         return true;
-      }
+    }
 
-      return false;
-    } catch (error) {
-      console.error('Registration error:', error);
-      toast({
-        title: "Erro no cadastro",
-        description: "Ocorreu um erro inesperado",
-        variant: "destructive",
-      });
-      return false;
+    return false;
+  };
+
+  /**
+   * Desconecta o usuário do sistema.
+   */
+  const logout = async (): Promise<void> => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+        toast.error("Erro ao sair", { description: error.message });
+    } else {
+        // O onAuthStateChange cuidará de limpar os estados user, session e isAdmin
+        toast.info("Você foi desconectado.");
     }
   };
 
-  const logout = async () => {
-    try {
-      await supabase.auth.signOut();
-      setUser(null);
-      setSession(null);
-      setIsAdmin(false);
-      
-      toast({
-        title: "Logout realizado",
-        description: "Você foi desconectado com sucesso",
-      });
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  };
-
+  // Efeito principal para gerenciar o estado de autenticação da aplicação
   useEffect(() => {
-    // Obter sessão inicial
+    setLoading(true);
+    
+    // 1. Tenta obter a sessão inicial ao carregar o app
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        const adminStatus = await checkAdminStatus(session.user.id);
-        setIsAdmin(adminStatus);
-      }
-      
-      setLoading(false);
-    });
+        setSession(session);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
 
-    // Escutar mudanças de autenticação
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        const adminStatus = await checkAdminStatus(session.user.id);
-        setIsAdmin(adminStatus);
-        
-        if (event === 'SIGNED_IN') {
-          setTimeout(() => {
-            registerLogin();
-          }, 0);
+        if (currentUser) {
+            const adminStatus = await checkAdminStatus(currentUser.id);
+            setIsAdmin(adminStatus);
         }
-      } else {
-        setIsAdmin(false);
-      }
-      
-      setLoading(false);
+        // Garante que o loading termine após a verificação inicial
+        setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // 2. Escuta mudanças no estado de autenticação (login, logout, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session);
+        const currentUser = session?.user ?? null;
+        setUser(currentUser);
+
+        if (currentUser) {
+          const adminStatus = await checkAdminStatus(currentUser.id);
+          setIsAdmin(adminStatus);
+          
+          if (event === 'SIGNED_IN') {
+            await registerUserLogin();
+          }
+        } else {
+          // Garante que o estado de admin seja limpo ao fazer logout
+          setIsAdmin(false);
+        }
+        
+        // Garante que o loading termine após qualquer mudança de estado
+        setLoading(false);
+      }
+    );
+
+    // Limpa a inscrição ao desmontar o componente
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const value = {
@@ -238,12 +205,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     register,
     isAuthenticated,
     loading,
-    isAdmin
+    isAdmin,
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 }
