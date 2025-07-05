@@ -12,6 +12,7 @@ interface AuthContextType {
   register: (name: string, email: string, password: string) => Promise<boolean>;
   isAuthenticated: boolean;
   loading: boolean;
+  isAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,8 +33,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const isAuthenticated = !!session;
+
+  // Função para verificar se o usuário é admin
+  const checkAdminStatus = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('is_admin')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error checking admin status:', error);
+        return false;
+      }
+
+      return data?.is_admin || false;
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+      return false;
+    }
+  };
 
   // Função para obter IP do usuário
   const getUserIP = async (): Promise<string> => {
@@ -53,7 +76,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const userAgent = navigator.userAgent;
       
       await supabase.rpc('register_login', {
-        user_ip: userIP as any,
+        user_ip: userIP,
         user_agent_string: userAgent
       });
     } catch (error) {
@@ -80,6 +103,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (data.user && data.session) {
         setUser(data.user);
         setSession(data.session);
+        
+        // Verificar se é admin
+        const adminStatus = await checkAdminStatus(data.user.id);
+        setIsAdmin(adminStatus);
+        
         await registerLogin();
         
         toast({
@@ -147,6 +175,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await supabase.auth.signOut();
       setUser(null);
       setSession(null);
+      setIsAdmin(false);
       
       toast({
         title: "Logout realizado",
@@ -159,9 +188,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     // Obter sessão inicial
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        const adminStatus = await checkAdminStatus(session.user.id);
+        setIsAdmin(adminStatus);
+      }
+      
       setLoading(false);
     });
 
@@ -171,11 +206,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      setLoading(false);
-
-      if (event === 'SIGNED_IN' && session) {
-        await registerLogin();
+      
+      if (session?.user) {
+        const adminStatus = await checkAdminStatus(session.user.id);
+        setIsAdmin(adminStatus);
+        
+        if (event === 'SIGNED_IN') {
+          setTimeout(() => {
+            registerLogin();
+          }, 0);
+        }
+      } else {
+        setIsAdmin(false);
       }
+      
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -188,7 +233,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     logout,
     register,
     isAuthenticated,
-    loading
+    loading,
+    isAdmin
   };
 
   return (

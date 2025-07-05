@@ -19,8 +19,8 @@ type SupabaseBanner = Tables<'banners'>;
 type SupabaseTopic = Tables<'topics'>;
 type SupabaseLesson = Tables<'lessons'>;
 
-interface ExtendedCourse extends Omit<SupabaseCourse, 'progress'> {
-  progress: number;
+interface ExtendedCourse extends Omit<SupabaseCourse, 'user_progress'> {
+  user_progress: number;
   topics?: LocalTopic[];
 }
 
@@ -41,15 +41,15 @@ export function SupabaseMemberDashboard() {
       if (error) throw error;
       
       // Convert to local Banner type
-      return (data as SupabaseBanner[]).map((banner): LocalBanner => ({
+      return (data || []).map((banner): LocalBanner => ({
         id: banner.id,
         title: banner.title,
         description: banner.description,
         image: banner.image,
         link: banner.link,
         buttonText: banner.button_text,
-        isActive: banner.is_active,
-        createdAt: banner.created_at
+        isActive: banner.is_active || false,
+        createdAt: banner.created_at || new Date().toISOString()
       }));
     }
   });
@@ -66,9 +66,9 @@ export function SupabaseMemberDashboard() {
 
       if (error) throw error;
       
-      return (data as SupabaseCourse[]).map((course): ExtendedCourse => ({
+      return (data || []).map((course): ExtendedCourse => ({
         ...course,
-        progress: course.user_progress || 0
+        user_progress: course.user_progress || 0
       }));
     },
     enabled: !!session
@@ -81,10 +81,10 @@ export function SupabaseMemberDashboard() {
       if (!session || !courses) return null;
 
       const availableCourses = courses.filter(c => c.is_free || c.has_access);
-      const completedCourses = availableCourses.filter(c => c.progress === 100);
-      const inProgressCourses = availableCourses.filter(c => c.progress > 0 && c.progress < 100);
+      const completedCourses = availableCourses.filter(c => c.user_progress === 100);
+      const inProgressCourses = availableCourses.filter(c => c.user_progress > 0 && c.user_progress < 100);
       const avgProgress = availableCourses.length > 0 
-        ? Math.round(availableCourses.reduce((acc, course) => acc + course.progress, 0) / availableCourses.length)
+        ? Math.round(availableCourses.reduce((acc, course) => acc + course.user_progress, 0) / availableCourses.length)
         : 0;
 
       return {
@@ -122,7 +122,7 @@ export function SupabaseMemberDashboard() {
 
       const courseWithTopics: ExtendedCourse = {
         ...course,
-        topics: (topics as any[])?.map((topic: any): LocalTopic => ({
+        topics: (topics || []).map((topic: any): LocalTopic => ({
           id: topic.id,
           title: topic.title,
           description: topic.description,
@@ -134,9 +134,9 @@ export function SupabaseMemberDashboard() {
             description: lesson.description,
             videoUrl: lesson.video_url,
             duration: lesson.duration,
-            isCompleted: lesson.is_completed
+            isCompleted: lesson.is_completed || false
           }))
-        })) || []
+        }))
       };
 
       setSelectedCourse(courseWithTopics);
@@ -175,19 +175,19 @@ export function SupabaseMemberDashboard() {
   if (selectedCourse) {
     // Convert ExtendedCourse to LocalCourse for CourseTopics
     const localCourse: LocalCourse = {
-      id: selectedCourse.id,
-      title: selectedCourse.title,
-      description: selectedCourse.description,
-      videoUrl: selectedCourse.video_url,
-      thumbnail: selectedCourse.thumbnail,
-      duration: selectedCourse.duration,
-      progress: selectedCourse.progress,
-      category: selectedCourse.category,
-      isLocked: selectedCourse.is_locked,
-      isFree: selectedCourse.is_free,
-      hasAccess: selectedCourse.has_access,
-      rating: selectedCourse.rating,
-      students: selectedCourse.students,
+      id: selectedCourse.id || 0,
+      title: selectedCourse.title || '',
+      description: selectedCourse.description || '',
+      videoUrl: selectedCourse.video_url || '',
+      thumbnail: selectedCourse.thumbnail || '',
+      duration: selectedCourse.duration || '',
+      progress: selectedCourse.user_progress || 0,
+      category: selectedCourse.category || '',
+      isLocked: selectedCourse.is_locked || false,
+      isFree: selectedCourse.is_free || false,
+      hasAccess: selectedCourse.has_access || false,
+      rating: selectedCourse.rating || 0,
+      students: selectedCourse.students || 0,
       topics: selectedCourse.topics || []
     };
 
@@ -294,8 +294,8 @@ export function SupabaseMemberDashboard() {
               >
                 <div className="relative overflow-hidden rounded-t-lg h-48">
                   <img
-                    src={course.thumbnail}
-                    alt={course.title}
+                    src={course.thumbnail || ''}
+                    alt={course.title || ''}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent group-hover:from-black/80 transition-all duration-300" />
@@ -337,13 +337,13 @@ export function SupabaseMemberDashboard() {
                   <p className="text-xs text-muted-foreground line-clamp-3 mb-3 flex-1">
                     {course.description}
                   </p>
-                  {course.progress > 0 && (
+                  {course.user_progress > 0 && (
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Progresso</span>
-                        <span className="text-foreground font-medium">{course.progress}%</span>
+                        <span className="text-foreground font-medium">{course.user_progress}%</span>
                       </div>
-                      <Progress value={course.progress} className="h-1.5" />
+                      <Progress value={course.user_progress} className="h-1.5" />
                     </div>
                   )}
                 </div>
@@ -370,8 +370,8 @@ export function SupabaseMemberDashboard() {
               >
                 <div className="relative overflow-hidden rounded-t-lg h-48">
                   <img
-                    src={course.thumbnail}
-                    alt={course.title}
+                    src={course.thumbnail || ''}
+                    alt={course.title || ''}
                     className="w-full h-full object-cover filter grayscale"
                   />
                   <div className="absolute inset-0 bg-black/60" />

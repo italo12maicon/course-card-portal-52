@@ -6,13 +6,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/components/AuthProvider";
 import { LoginForm } from "@/components/LoginForm";
-import Index from "./pages/Index";
+import { Layout } from "@/components/Layout";
+import { SupabaseMemberDashboard } from "@/components/SupabaseMemberDashboard";
+import { AdminPanel } from "@/components/AdminPanel";
+import { useState } from "react";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 function AppContent() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, isAdmin } = useAuth();
+  const [currentView, setCurrentView] = useState<"member" | "admin">("member");
 
   if (loading) {
     return (
@@ -29,12 +33,33 @@ function AppContent() {
     return <LoginForm />;
   }
 
+  const handleViewChange = (view: "member" | "admin") => {
+    if (view === "admin" && !isAdmin) {
+      return; // Não permite acesso ao admin se não for admin
+    }
+    setCurrentView(view);
+  };
+
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Index />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <Layout 
+        currentView={currentView} 
+        onViewChange={isAdmin ? handleViewChange : undefined}
+      >
+        <Routes>
+          <Route 
+            path="/" 
+            element={
+              currentView === "admin" && isAdmin ? (
+                <AdminPanel />
+              ) : (
+                <SupabaseMemberDashboard />
+              )
+            } 
+          />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Layout>
     </BrowserRouter>
   );
 }
